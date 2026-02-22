@@ -12,7 +12,7 @@ services:
       - "POSTGRES_PASSWORD=openclaw"
       - "POSTGRES_DB=openclaw"
       - "MONGODB_URI=mongodb://mongodb:27017"
-      - "GOOGLE_PLACES_API_KEY=AIzaSyBietLIy5PzOmT6G9Cit0b9OrNRLieyxyM"
+      - "GOOGLE_PLACES_API_KEY=${GOOGLE_PLACES_API_KEY}"
     networks:
       - openclaw_network
     labels:
