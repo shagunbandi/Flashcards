@@ -17,11 +17,13 @@ flashcard-app/server/node_modules/
 # Build outputs
 flashcard-app/client/build/
 flashcard-app/client/dist/
-flashcard-app/flashcard/
 
 # Logs
 *.log
 npm-debug.log*
+
+# Secrets
+flashcard-app/secrets/
 
 # OS
 .DS_Store

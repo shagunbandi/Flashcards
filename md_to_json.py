@@ -34,7 +34,7 @@ Your job is to extract every question and return a JSON object in this exact sha
   "questions": [
     {
       "number": <integer question number>,
-      "question": "<full question text, including any numbered sub-statements, preserving LaTeX>",
+      "question": "<full question text, including any numbered sub-statements, preserving LaTeX and inline image references>",
       "options": {
         "a": "<option a text>",
         "b": "<option b text>",
@@ -53,18 +53,31 @@ Rules:
   part of the question preamble, not the question itself.
 - For Statement (I) / Statement (II) style questions, include both statements in the question field.
 - Preserve LaTeX math exactly as written (e.g. $2e^{-3t}$, \\frac{...}{...}, etc.).
+- If a question contains a markdown image reference (e.g. ![](_page_2_Figure_16.jpeg)), include it
+  verbatim inside the "question" string at the position where it appears. Do NOT drop or alter image paths.
 - Return ONLY valid JSON — no markdown fences, no extra commentary.
 - The top-level value must be a JSON object with a "questions" key containing the array.
 """
 
 
-def parse_md_to_json(md_path: str, model: str) -> list[dict]:
-    client = OpenAI()  # reads OPENAI_API_KEY from environment
+def extract_questions_from_response(parsed: dict | list) -> list[dict]:
+    if isinstance(parsed, dict):
+        for key in ("questions", "items", "data", "results"):
+            if key in parsed and isinstance(parsed[key], list):
+                return parsed[key]
+        for v in parsed.values():
+            if isinstance(v, list):
+                return v
+        raise ValueError(f"Unexpected JSON shape: {list(parsed.keys())}")
 
-    with open(md_path, "r", encoding="utf-8") as f:
-        content = f.read()
+    if isinstance(parsed, list):
+        return parsed
 
-    print(f"  Sending {len(content):,} characters to {model}...")
+    raise ValueError("Could not extract question list from response.")
+
+
+def call_openai(client: OpenAI, model: str, content: str, part_label: str) -> list[dict]:
+    print(f"  [{part_label}] Sending {len(content):,} characters to {model}...")
 
     response = client.chat.completions.create(
         model=model,
@@ -79,29 +92,43 @@ def parse_md_to_json(md_path: str, model: str) -> list[dict]:
 
     raw = response.choices[0].message.content
     usage = response.usage
-    print(f"  Tokens used — input: {usage.prompt_tokens:,}, output: {usage.completion_tokens:,}")
+    print(
+        f"  [{part_label}] Tokens used — input: {usage.prompt_tokens:,}, output: {usage.completion_tokens:,}"
+    )
 
-    parsed = json.loads(raw)
+    return extract_questions_from_response(json.loads(raw))
 
-    # Expected shape: {"questions": [...]}
-    # Fallback: try any list value in the object
-    if isinstance(parsed, dict):
-        for key in ("questions", "items", "data", "results"):
-            if key in parsed and isinstance(parsed[key], list):
-                return parsed[key]
-        for v in parsed.values():
-            if isinstance(v, list):
-                return v
-        raise ValueError(f"Unexpected JSON shape: {list(parsed.keys())}")
 
-    if isinstance(parsed, list):
-        return parsed
+def split_on_line_boundary(content: str) -> tuple[str, str]:
+    """Split content roughly in half at a line boundary."""
+    mid = len(content) // 2
+    split_pos = content.rfind("\n", 0, mid)
+    if split_pos == -1:
+        split_pos = mid
+    return content[:split_pos], content[split_pos:]
 
-    raise ValueError(f"Could not extract question list from response.")
+
+def parse_md_to_json(md_path: str, model: str) -> list[dict]:
+    client = OpenAI()  # reads OPENAI_API_KEY from environment
+
+    with open(md_path, "r", encoding="utf-8") as f:
+        content = f.read()
+
+    part1, part2 = split_on_line_boundary(content)
+    print(f"  Split into two parts: {len(part1):,} + {len(part2):,} characters")
+
+    questions_part1 = call_openai(client, model, part1, "Part 1")
+    questions_part2 = call_openai(client, model, part2, "Part 2")
+
+    combined = questions_part1 + questions_part2
+    print(f"  Combined: {len(questions_part1)} + {len(questions_part2)} = {len(combined)} questions")
+    return combined
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Convert exam MD to structured JSON via GPT.")
+    parser = argparse.ArgumentParser(
+        description="Convert exam MD to structured JSON via GPT."
+    )
     parser.add_argument("md_file", help="Path to the markdown file")
     parser.add_argument(
         "--model",

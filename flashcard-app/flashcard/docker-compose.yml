@@ -1,7 +1,7 @@
 services:
   flashcard:
     build:
-      context: ./flashcard
+      context: .
       dockerfile: Dockerfile
     container_name: openclaw-flashcard
     restart: unless-stopped
@@ -13,10 +13,6 @@ services:
       - "POSTGRES_DB=openclaw"
       - "MONGODB_URI=mongodb://mongodb:27017"
       - "GOOGLE_PLACES_API_KEY=AIzaSyBietLIy5PzOmT6G9Cit0b9OrNRLieyxyM"
-      - "GCS_BUCKET_NAME=flashcard-uploads"
-      - "GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcs-key.json"
-    volumes:
-      - ./secrets/gcs-key.json:/secrets/gcs-key.json:ro
     networks:
       - openclaw_network
     labels:
