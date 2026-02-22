@@ -1,0 +1,35 @@
+services:
+  flashcards:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openclaw-flashcards
+    restart: unless-stopped
+    environment:
+      - "POSTGRES_HOST=postgres"
+      - "POSTGRES_PORT=5432"
+      - "POSTGRES_USER=openclaw"
+      - "POSTGRES_PASSWORD=openclaw"
+      - "POSTGRES_DB=openclaw"
+      - "MONGODB_URI=mongodb://mongodb:27017"
+      - "GOOGLE_PLACES_API_KEY=AIzaSyBietLIy5PzOmT6G9Cit0b9OrNRLieyxyM"
+      - "GOOGLE_APPLICATION_CREDENTIALS=/secrets/gcs_key.json"
+      - "GCS_BUCKET_NAME=flashcard-uploads"
+    networks:
+      - openclaw_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.flashcards.rule=Host(`flashcards.pocketfusion.in`)"
+      - "traefik.http.routers.flashcards.entrypoints=websecure"
+      - "traefik.http.routers.flashcards.tls=true"
+      - "traefik.http.routers.flashcards.tls.certresolver=cloudflare"
+      - "traefik.http.services.flashcards.loadbalancer.server.port=3000"
+      - "openclaw.managed=true"
+      - "openclaw.app=flashcards"
+      - "openclaw.domain=flashcards.pocketfusion.in"
+    volumes:
+      - "/home/shagunbandi/openclaw/deployer-workspace/config/gcs_key.json:/secrets/gcs_key.json:ro"
+
+networks:
+  openclaw_network:
+    external: true
