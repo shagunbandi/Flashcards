@@ -25,6 +25,34 @@ const upload = multer({
 
 const router = express.Router();
 
+// Base SELECT for cards — tags aggregated from junction table
+const CARD_SELECT = `
+  SELECT c.id, c.topic_id, c.front_type, c.front_content, c.back_type, c.back_content,
+    c.source_import_id, c.source_title, c.source_question_number, c.difficulty, c.created_at,
+    t.name AS topic_name,
+    COALESCE((
+      SELECT array_agg(tg.name ORDER BY tg.name)
+      FROM card_tags ct JOIN tags tg ON tg.id = ct.tag_id
+      WHERE ct.card_id = c.id
+    ), '{}') AS tags
+  FROM cards c JOIN topics t ON t.id = c.topic_id
+`;
+
+// Upsert tags and link them to a card (replaces existing links)
+async function setCardTags(cardId, tagNames) {
+  await query('DELETE FROM card_tags WHERE card_id = $1', [cardId]);
+  for (const name of tagNames) {
+    const tagRes = await query(
+      'INSERT INTO tags (id, name) VALUES ($1, $2) ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name RETURNING id',
+      [uuidv4(), name]
+    );
+    await query(
+      'INSERT INTO card_tags (card_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [cardId, tagRes.rows[0].id]
+    );
+  }
+}
+
 // Upload image endpoint
 router.post('/upload', upload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -50,13 +78,11 @@ router.get('/', async (req, res) => {
     let result;
     if (topic_id) {
       result = await query(
-        'SELECT c.*, t.name as topic_name FROM cards c JOIN topics t ON t.id = c.topic_id WHERE c.topic_id = $1 ORDER BY c.created_at DESC',
+        `${CARD_SELECT} WHERE c.topic_id = $1 ORDER BY c.created_at DESC`,
         [topic_id]
       );
     } else {
-      result = await query(
-        'SELECT c.*, t.name as topic_name FROM cards c JOIN topics t ON t.id = c.topic_id ORDER BY c.created_at DESC'
-      );
+      result = await query(`${CARD_SELECT} ORDER BY c.created_at DESC`);
     }
     res.json(result.rows);
   } catch (err) {
@@ -77,13 +103,11 @@ router.post('/', async (req, res) => {
 
     const id = uuidv4();
     await query(
-      'INSERT INTO cards (id, topic_id, front_type, front_content, back_type, back_content, difficulty, tags) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [id, topic_id, front_type, front_content, back_type, back_content, difficulty || null, Array.isArray(tags) ? tags : []]
+      'INSERT INTO cards (id, topic_id, front_type, front_content, back_type, back_content, difficulty) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [id, topic_id, front_type, front_content, back_type, back_content, difficulty || null]
     );
-    const cardResult = await query(
-      'SELECT c.*, t.name as topic_name FROM cards c JOIN topics t ON t.id = c.topic_id WHERE c.id = $1',
-      [id]
-    );
+    if (Array.isArray(tags) && tags.length) await setCardTags(id, tags);
+    const cardResult = await query(`${CARD_SELECT} WHERE c.id = $1`, [id]);
     res.status(201).json(cardResult.rows[0]);
   } catch (err) {
     console.error(err);
@@ -100,7 +124,7 @@ router.put('/:id', async (req, res) => {
     const existing = existingResult.rows[0];
 
     await query(
-      'UPDATE cards SET topic_id = $1, front_type = $2, front_content = $3, back_type = $4, back_content = $5, difficulty = $6, tags = $7 WHERE id = $8',
+      'UPDATE cards SET topic_id = $1, front_type = $2, front_content = $3, back_type = $4, back_content = $5, difficulty = $6 WHERE id = $7',
       [
         topic_id || existing.topic_id,
         front_type || existing.front_type,
@@ -108,14 +132,11 @@ router.put('/:id', async (req, res) => {
         back_type || existing.back_type,
         back_content || existing.back_content,
         difficulty !== undefined ? difficulty : existing.difficulty,
-        tags !== undefined ? (Array.isArray(tags) ? tags : []) : (existing.tags || []),
         req.params.id
       ]
     );
-    const cardResult = await query(
-      'SELECT c.*, t.name as topic_name FROM cards c JOIN topics t ON t.id = c.topic_id WHERE c.id = $1',
-      [req.params.id]
-    );
+    if (tags !== undefined) await setCardTags(req.params.id, Array.isArray(tags) ? tags : []);
+    const cardResult = await query(`${CARD_SELECT} WHERE c.id = $1`, [req.params.id]);
     res.json(cardResult.rows[0]);
   } catch (err) {
     console.error(err);

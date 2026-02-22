@@ -16,6 +16,11 @@ export const api = {
   // Import
   importQuestions: (data) => fetch(`${BASE}/cards/import`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => r.json()),
 
+  // Saved quizzes
+  getSavedQuizzes: () => fetch(`${BASE}/saved-quizzes`).then(r => r.json()),
+  createSavedQuiz: (data) => fetch(`${BASE}/saved-quizzes`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }).then(r => r.json()),
+  deleteSavedQuiz: (id) => fetch(`${BASE}/saved-quizzes/${id}`, { method: 'DELETE' }).then(r => r.json()),
+
   // Upload
   uploadImage: (file, folder) => {
     const fd = new FormData();

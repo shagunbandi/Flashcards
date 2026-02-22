@@ -5,6 +5,7 @@ const path = require('path');
 
 const topicRoutes = require('./routes/topics');
 const cardRoutes = require('./routes/cards');
+const savedQuizRoutes = require('./routes/savedQuizzes');
 
 const app = express();
 const PORT = 3000;
@@ -15,6 +16,7 @@ app.use(express.json({ limit: '50mb' }));
 // API routes
 app.use('/api/topics', topicRoutes);
 app.use('/api/cards', cardRoutes);
+app.use('/api/saved-quizzes', savedQuizRoutes);
 
 // Serve frontend (only in production where public/ is built)
 const publicDir = path.join(__dirname, 'public');

@@ -179,9 +179,15 @@ export default function Quiz() {
   const [editModalCard, setEditModalCard] = useState(null);
   const [tagInput, setTagInput] = useState('');
   const [customMode, setCustomMode] = useState(false);
+  const [customFilters, setCustomFilters] = useState(null);
+  const [savedQuizzes, setSavedQuizzes] = useState([]);
 
   useEffect(() => {
-    api.getTopics().then(t => { setTopics(t); setLoading(false); });
+    Promise.all([api.getTopics(), api.getSavedQuizzes()]).then(([t, sq]) => {
+      setTopics(t);
+      setSavedQuizzes(sq);
+      setLoading(false);
+    });
   }, []);
 
   useEffect(() => {
@@ -252,6 +258,26 @@ export default function Quiz() {
     await handleUpdateTags(currentCard.id, (currentCard.tags || []).filter(t => t !== tag));
   };
 
+  const startQuizFromFilters = async (filters) => {
+    const allCards = await api.getCards();
+    const filtered = allCards.filter(card => {
+      const tagMatch = !filters.tags?.length || (card.tags || []).some(t => filters.tags.includes(t));
+      const diffMatch = !filters.difficulties?.length || filters.difficulties.includes(card.difficulty ?? null);
+      const srcMatch = !filters.sources?.length || filters.sources.includes(card.source_title);
+      return tagMatch && diffMatch && srcMatch;
+    });
+    if (!filtered.length) return;
+    setCards(sortCards(filtered));
+    setIndex(0);
+    setFlipped(false);
+    setStarted(true);
+  };
+
+  const handleDeleteSavedQuiz = async (id) => {
+    await api.deleteSavedQuiz(id);
+    setSavedQuizzes(sq => sq.filter(q => q.id !== id));
+  };
+
   const handleOpenEdit = () => setEditModalCard({ ...cards[index] });
   const handleCloseEdit = () => setEditModalCard(null);
 
@@ -269,15 +295,17 @@ export default function Quiz() {
   if (customMode) {
     return (
       <CustomQuizSetup
+        initialFilters={customFilters}
         onStart={(selectedCards) => {
           if (!selectedCards.length) return;
           setCards(sortCards(selectedCards));
           setIndex(0);
           setFlipped(false);
           setCustomMode(false);
+          setCustomFilters(null);
           setStarted(true);
         }}
-        onCancel={() => setCustomMode(false)}
+        onCancel={() => { setCustomMode(false); setCustomFilters(null); }}
       />
     );
   }
@@ -294,7 +322,7 @@ export default function Quiz() {
             All Topics
           </button>
           <button
-            onClick={() => setCustomMode(true)}
+            onClick={() => { setCustomFilters(null); setCustomMode(true); }}
             className="w-full px-4 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition font-medium text-lg"
           >
             Custom Quiz
@@ -310,7 +338,47 @@ export default function Quiz() {
             </button>
           ))}
         </div>
-        <Link to="/" className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">← Back to topics</Link>
+
+        {savedQuizzes.length > 0 && (
+          <div className="mt-6 text-left">
+            <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 px-1">
+              Saved Quizzes
+            </div>
+            <div className="space-y-2">
+              {savedQuizzes.map(sq => (
+                <div
+                  key={sq.id}
+                  className="flex items-center gap-2 px-4 py-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl"
+                >
+                  <span className="flex-1 font-medium text-gray-800 dark:text-gray-100 truncate">{sq.name}</span>
+                  <button
+                    onClick={() => startQuizFromFilters(sq.filters)}
+                    className="shrink-0 px-3 py-1 bg-purple-600 text-white text-sm rounded-lg hover:bg-purple-700 transition font-medium"
+                  >
+                    Play
+                  </button>
+                  <button
+                    onClick={() => { setCustomFilters(sq.filters); setCustomMode(true); }}
+                    className="shrink-0 px-3 py-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-300 dark:hover:bg-gray-600 transition font-medium"
+                  >
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => handleDeleteSavedQuiz(sq.id)}
+                    className="shrink-0 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition text-lg leading-none px-1"
+                    title="Delete"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="mt-6">
+          <Link to="/" className="text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">← Back to topics</Link>
+        </div>
       </div>
     );
   }

@@ -1,19 +1,25 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { api } from '../api';
 import MathContent from './MathContent';
 
-export default function CustomQuizSetup({ onStart, onCancel }) {
+export default function CustomQuizSetup({ onStart, onCancel, initialFilters }) {
   const [allCards, setAllCards] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedTags, setSelectedTags] = useState(new Set());
-  const [selectedDifficulties, setSelectedDifficulties] = useState(new Set());
-  const [selectedSources, setSelectedSources] = useState(new Set());
+  const [selectedTags, setSelectedTags] = useState(() => new Set(initialFilters?.tags || []));
+  const [selectedDifficulties, setSelectedDifficulties] = useState(() => new Set(initialFilters?.difficulties || []));
+  const [selectedSources, setSelectedSources] = useState(() => new Set(initialFilters?.sources || []));
   const [checkedCardIds, setCheckedCardIds] = useState(new Set());
+
+  // Save-quiz UI state
+  const [saveOpen, setSaveOpen] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState('');
+  const saveInputRef = useRef(null);
 
   useEffect(() => {
     api.getCards().then(cards => {
       setAllCards(cards);
-      setCheckedCardIds(new Set(cards.map(c => c.id)));
       setLoading(false);
     });
   }, []);
@@ -52,6 +58,7 @@ export default function CustomQuizSetup({ onStart, onCancel }) {
   // Auto-select cards when filters change
   useEffect(() => {
     setCheckedCardIds(new Set(filteredCards.map(c => c.id)));
+    setSavedMsg('');
   }, [filteredCards]);
 
   const toggleTag = (tag) => {
@@ -91,6 +98,27 @@ export default function CustomQuizSetup({ onStart, onCancel }) {
 
   const selectedCards = allCards.filter(c => checkedCardIds.has(c.id));
 
+  const handleSaveQuiz = async () => {
+    if (!saveName.trim()) return;
+    setSaving(true);
+    const filters = {
+      tags: [...selectedTags],
+      difficulties: [...selectedDifficulties],
+      sources: [...selectedSources],
+    };
+    await api.createSavedQuiz({ name: saveName.trim(), filters });
+    setSaving(false);
+    setSaveOpen(false);
+    setSaveName('');
+    setSavedMsg('Quiz saved!');
+  };
+
+  const openSave = () => {
+    setSaveOpen(true);
+    setSavedMsg('');
+    setTimeout(() => saveInputRef.current?.focus(), 50);
+  };
+
   if (loading) return <div className="text-center py-12 text-gray-400">Loading...</div>;
 
   return (
@@ -104,7 +132,38 @@ export default function CustomQuizSetup({ onStart, onCancel }) {
 
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 mb-4 space-y-4">
-        <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Filters</div>
+        <div className="flex items-center justify-between">
+          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Filters</div>
+          {savedMsg ? (
+            <span className="text-xs text-green-600 dark:text-green-400 font-medium">{savedMsg}</span>
+          ) : saveOpen ? (
+            <div className="flex items-center gap-2">
+              <input
+                ref={saveInputRef}
+                type="text"
+                value={saveName}
+                onChange={e => setSaveName(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') handleSaveQuiz(); if (e.key === 'Escape') setSaveOpen(false); }}
+                placeholder="Quiz name…"
+                className="text-sm px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 outline-none focus:ring-2 focus:ring-purple-500 w-36"
+              />
+              <button
+                onClick={handleSaveQuiz}
+                disabled={!saveName.trim() || saving}
+                className="text-xs px-2.5 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 transition font-medium"
+              >
+                {saving ? 'Saving…' : 'Save'}
+              </button>
+              <button onClick={() => setSaveOpen(false)} className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <button onClick={openSave} className="text-xs text-purple-600 hover:text-purple-500 font-medium">
+              Save this quiz
+            </button>
+          )}
+        </div>
 
         {allTags.length > 0 && (
           <div className="space-y-2">
