@@ -1,0 +1,31 @@
+services:
+  flashcard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openclaw-flashcard
+    restart: unless-stopped
+    environment:
+      - "POSTGRES_HOST=postgres"
+      - "POSTGRES_PORT=5432"
+      - "POSTGRES_USER=openclaw"
+      - "POSTGRES_PASSWORD=openclaw"
+      - "POSTGRES_DB=openclaw"
+      - "MONGODB_URI=mongodb://mongodb:27017"
+      - "GOOGLE_PLACES_API_KEY=AIzaSyBietLIy5PzOmT6G9Cit0b9OrNRLieyxyM"
+    networks:
+      - openclaw_network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.flashcard.rule=Host(`flashcard.pocketfusion.in`)"
+      - "traefik.http.routers.flashcard.entrypoints=websecure"
+      - "traefik.http.routers.flashcard.tls=true"
+      - "traefik.http.routers.flashcard.tls.certresolver=cloudflare"
+      - "traefik.http.services.flashcard.loadbalancer.server.port=3000"
+      - "openclaw.managed=true"
+      - "openclaw.app=flashcard"
+      - "openclaw.domain=flashcard.pocketfusion.in"
+
+networks:
+  openclaw_network:
+    external: true

@@ -1,0 +1,27 @@
+# Input / Output
+input/
+output/
+
+# Python
+marker-env/
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Node
+node_modules/
+flashcard-app/client/node_modules/
+flashcard-app/server/node_modules/
+
+# Build outputs
+flashcard-app/client/build/
+flashcard-app/client/dist/
+flashcard-app/flashcard/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
