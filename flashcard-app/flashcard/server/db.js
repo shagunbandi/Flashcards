@@ -51,6 +51,8 @@ async function initDB() {
       'ALTER TABLE cards ADD COLUMN source_import_id TEXT',
       'ALTER TABLE cards ADD COLUMN source_title TEXT',
       'ALTER TABLE cards ADD COLUMN source_question_number INTEGER',
+      'ALTER TABLE cards ADD COLUMN difficulty INTEGER CHECK(difficulty >= 1 AND difficulty <= 5)',
+      "ALTER TABLE cards ADD COLUMN tags TEXT[] DEFAULT '{}'",
     ]) {
       try {
         await client.query(col);
