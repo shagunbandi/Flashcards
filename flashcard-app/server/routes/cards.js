@@ -60,7 +60,7 @@ router.get('/', async (req, res) => {
 
 // POST create card
 router.post('/', async (req, res) => {
-  const { topic_id, front_type, front_content, back_type, back_content } = req.body;
+  const { topic_id, front_type, front_content, back_type, back_content, difficulty, tags } = req.body;
   if (!topic_id || !front_type || !front_content || !back_type || !back_content) {
     return res.status(400).json({ error: 'All fields are required' });
   }
@@ -70,8 +70,8 @@ router.post('/', async (req, res) => {
 
     const id = uuidv4();
     await query(
-      'INSERT INTO cards (id, topic_id, front_type, front_content, back_type, back_content) VALUES ($1, $2, $3, $4, $5, $6)',
-      [id, topic_id, front_type, front_content, back_type, back_content]
+      'INSERT INTO cards (id, topic_id, front_type, front_content, back_type, back_content, difficulty, tags) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [id, topic_id, front_type, front_content, back_type, back_content, difficulty ?? null, Array.isArray(tags) && tags.length ? tags : null]
     );
     const cardResult = await query(
       'SELECT c.*, t.name as topic_name FROM cards c JOIN topics t ON t.id = c.topic_id WHERE c.id = $1',
@@ -86,20 +86,22 @@ router.post('/', async (req, res) => {
 
 // PUT update card
 router.put('/:id', async (req, res) => {
-  const { topic_id, front_type, front_content, back_type, back_content } = req.body;
+  const { topic_id, front_type, front_content, back_type, back_content, difficulty, tags } = req.body;
   try {
     const existingResult = await query('SELECT * FROM cards WHERE id = $1', [req.params.id]);
     if (existingResult.rows.length === 0) return res.status(404).json({ error: 'Card not found' });
     const existing = existingResult.rows[0];
 
     await query(
-      'UPDATE cards SET topic_id = $1, front_type = $2, front_content = $3, back_type = $4, back_content = $5 WHERE id = $6',
+      'UPDATE cards SET topic_id = $1, front_type = $2, front_content = $3, back_type = $4, back_content = $5, difficulty = $6, tags = $7 WHERE id = $8',
       [
         topic_id || existing.topic_id,
         front_type || existing.front_type,
         front_content || existing.front_content,
         back_type || existing.back_type,
         back_content || existing.back_content,
+        difficulty !== undefined ? (difficulty ?? null) : existing.difficulty,
+        tags !== undefined ? (Array.isArray(tags) && tags.length ? tags : null) : existing.tags,
         req.params.id
       ]
     );
@@ -174,6 +176,18 @@ function normalizeToCards(payload) {
       q.back ??
       q.a ??
       '(Your answer)';
+    // Resolve single-letter answer (a/b/c/d) to full option text when options dict is present
+    if (
+      typeof back === 'string' &&
+      /^[a-dA-D]$/.test(back.trim()) &&
+      q.options &&
+      typeof q.options === 'object' &&
+      !Array.isArray(q.options)
+    ) {
+      const letter = back.trim().toLowerCase();
+      const optionText = q.options[letter];
+      if (optionText) back = `${letter.toUpperCase()}. ${optionText}`;
+    }
     if (q.explanation && typeof q.explanation === 'string' && q.explanation.trim()) {
       back = (typeof back === 'string' ? back : String(back)) + '\n\n' + q.explanation.trim();
     }
@@ -197,7 +211,11 @@ function normalizeToCards(payload) {
     const fullFront = (frontText + statements + optionsText).trim() || frontText;
     const backText = typeof back === 'string' ? back : String(back);
     const questionNumber = q.question_number != null ? Number(q.question_number) : null;
-    return { front: fullFront, back: backText, question_number: questionNumber };
+    const tags = Array.isArray(q.tags) ? [...q.tags] : [];
+    if (q.topic && typeof q.topic === 'string' && q.topic.trim() && !tags.includes(q.topic.trim())) {
+      tags.push(q.topic.trim());
+    }
+    return { front: fullFront, back: backText, question_number: questionNumber, tags };
   });
 }
 
@@ -244,10 +262,10 @@ async function processImport(topicIdOrName, cards, useTopicId, importMeta) {
       );
     }
 
-    for (const { front, back, question_number } of cards) {
+    for (const { front, back, question_number, tags } of cards) {
       await query(
-        `INSERT INTO cards (id, topic_id, front_type, front_content, back_type, back_content, source_import_id, source_title, source_question_number)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO cards (id, topic_id, front_type, front_content, back_type, back_content, source_import_id, source_title, source_question_number, tags)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [
           uuidv4(),
           topicId,
@@ -258,6 +276,7 @@ async function processImport(topicIdOrName, cards, useTopicId, importMeta) {
           sourceImportId,
           sourceTitle,
           question_number != null && Number.isInteger(question_number) ? question_number : null,
+          tags && tags.length ? tags : null,
         ]
       );
     }

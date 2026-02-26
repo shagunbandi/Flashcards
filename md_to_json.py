@@ -21,14 +21,14 @@ import sys
 
 from openai import OpenAI
 
-SYSTEM_PROMPT = """You are an expert at parsing multiple-choice examination papers.
+SYSTEM_PROMPT = """You are an expert at parsing multiple-choice examination papers, with deep knowledge of the Indian Engineering Services (IES/ESE) exam syllabus and General Studies content.
 
 You will receive a markdown file extracted from a scanned PDF of an MCQ exam. The text
 may have minor OCR/formatting issues: some statement numbers may be missing, extra dashes
 or asterisks may appear, LaTeX math may be present (keep it as-is), and some questions may
 span multiple paragraphs.
 
-Your job is to extract every question and return a JSON object in this exact shape:
+Your job is to extract every question, determine the correct answer, assign a topic tag, and return a JSON object in this exact shape:
 
 {
   "questions": [
@@ -40,12 +40,14 @@ Your job is to extract every question and return a JSON object in this exact sha
         "b": "<option b text>",
         "c": "<option c text>",
         "d": "<option d text>"
-      }
+      },
+      "answer": "<correct option letter: a, b, c, or d>",
+      "topic": "<IES topic tag — see list below>"
     }
   ]
 }
 
-Rules:
+Rules for parsing:
 - Include ALL numbered sub-statements as part of the question text (e.g. "1. ... 2. ... 3. ...").
   Reconstruct missing statement numbers using context if needed.
 - Strip leading dashes, asterisks, and bold markers from the question and option texts.
@@ -55,6 +57,39 @@ Rules:
 - Preserve LaTeX math exactly as written (e.g. $2e^{-3t}$, \\frac{...}{...}, etc.).
 - If a question contains a markdown image reference (e.g. ![](_page_2_Figure_16.jpeg)), include it
   verbatim inside the "question" string at the position where it appears. Do NOT drop or alter image paths.
+
+Rules for answer:
+- Use your knowledge to determine the correct answer based on the question and options.
+- Return the single letter (a, b, c, or d) corresponding to the correct option.
+- If the answer cannot be determined with confidence (e.g. question depends on a missing figure), set "answer" to null.
+
+Rules for topic:
+- Assign exactly one topic tag from the list below based on the subject matter of the question.
+- Use these IES Civil Engineering topics:
+
+    Paper I topics:
+    - Building Materials               (stone, lime, cement, concrete, steel, timber, FRP, ceramics, admixtures, mix design)
+    - Solid Mechanics                  (stress, strain, Mohr's circle, elastic constants, failure theories, bending, torsion)
+    - Structural Analysis              (trusses, beams, frames, influence lines, indeterminate structures, vibration, unit load)
+    - Steel Structures                 (tension/compression members, beams, columns, connections, plate girders, industrial roofs, IS 800)
+    - Concrete & Masonry Structures    (RCC limit state design, slabs, footings, retaining walls, pre-stressed concrete, masonry, IS 456)
+    - Construction Management          (project planning, PERT/CPM, equipment, tendering, quality control, safety, site management)
+
+    Paper II topics:
+    - Fluid Mechanics & Hydraulics     (fluid properties, pipe flow, open channels, dimensional analysis, hydraulic jump, boundary layer)
+    - Hydraulic Machines & Hydropower  (pumps, turbines, air vessels, powerhouse layout, pondage)
+    - Hydrology                        (hydrological cycle, rainfall, runoff, flood estimation, groundwater, well hydrology, river morphology)
+    - Water Resources & Irrigation     (reservoirs, dams, weirs, barrages, canals, canal design, waterlogging, drought management)
+    - Environmental Engineering        (water supply, water treatment, sewage, wastewater treatment, solid waste, air pollution, noise pollution)
+    - Geotechnical Engineering         (soil classification, permeability, seepage, consolidation, shear strength, earth pressure, soil exploration)
+    - Foundation Engineering           (shallow foundations, deep foundations, bearing capacity, settlement, slope stability, embankments, geo-synthetics)
+    - Surveying & Geology              (levelling, theodolite, GPS, photogrammetry, remote sensing, curves, engineering geology)
+    - Highway Engineering              (planning, geometric design, pavement design, flexible & rigid pavements, traffic engineering, drainage)
+    - Railway Engineering              (track components, geometric design, points & crossings, maintenance, signalling)
+    - Tunnelling & Airport Engineering (tunnelling methods, airport planning, runway design, harbor & dock engineering)
+
+- If none of the above fits, use "General" as the topic.
+
 - Return ONLY valid JSON — no markdown fences, no extra commentary.
 - The top-level value must be a JSON object with a "questions" key containing the array.
 """
@@ -87,7 +122,7 @@ def call_openai(client: OpenAI, model: str, content: str, part_label: str) -> li
         ],
         response_format={"type": "json_object"},
         temperature=0,
-        max_tokens=16000,
+        max_tokens=16384,
     )
 
     raw = response.choices[0].message.content
